@@ -2,117 +2,88 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, and } from "drizzle-orm";
-import { getDb } from "@/lib/db";
 import {
-  companies,
-  techStackItems,
-  contacts,
-  interactions,
-} from "@/lib/db/schema";
-import { currentOrgId } from "@/lib/org";
+  createCompany as svcCreateCompany,
+  addTechItem as svcAddTechItem,
+  removeTechItem as svcRemoveTechItem,
+  addContact as svcAddContact,
+  logInteraction as svcLogInteraction,
+} from "@/lib/crm/service";
+import {
+  CompanyCreateSchema,
+  TechItemCreateSchema,
+  ContactCreateSchema,
+  InteractionCreateSchema,
+} from "@/lib/crm/schemas";
 
-function str(v: FormDataEntryValue | null): string | null {
+// Server actions are thin adapters: turn FormData into a plain object, validate
+// with the shared schema, then delegate to the service layer (same code the
+// agent/API path uses).
+
+function opt(v: FormDataEntryValue | null): string | undefined {
   const s = typeof v === "string" ? v.trim() : "";
-  return s.length ? s : null;
+  return s.length ? s : undefined;
 }
 
 export async function createCompany(formData: FormData) {
-  const db = await getDb();
-  const name = str(formData.get("name"));
-  if (!name) throw new Error("Company name is required");
-
-  const tagsRaw = str(formData.get("tags"));
-  const tags = tagsRaw
-    ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
-    : [];
-
-  const [row] = await db
-    .insert(companies)
-    .values({
-      orgId: currentOrgId(),
-      name,
-      domain: str(formData.get("domain")),
-      website: str(formData.get("website")),
-      industry: str(formData.get("industry")),
-      // size is an enum; empty -> null
-      size: (str(formData.get("size")) as never) ?? null,
-      hqLocation: str(formData.get("hqLocation")),
-      description: str(formData.get("description")),
-      tags,
-    })
-    .returning({ id: companies.id });
-
+  const tagsRaw = opt(formData.get("tags"));
+  const input = CompanyCreateSchema.parse({
+    name: opt(formData.get("name")),
+    domain: opt(formData.get("domain")),
+    website: opt(formData.get("website")),
+    industry: opt(formData.get("industry")),
+    size: opt(formData.get("size")),
+    hqLocation: opt(formData.get("hqLocation")),
+    description: opt(formData.get("description")),
+    tags: tagsRaw
+      ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
+      : undefined,
+  });
+  const row = await svcCreateCompany(input);
   revalidatePath("/");
   redirect(`/companies/${row.id}`);
 }
 
 export async function addTechItem(formData: FormData) {
-  const db = await getDb();
-  const companyId = Number(formData.get("companyId"));
-  const name = str(formData.get("name"));
-  if (!companyId || !name) throw new Error("Missing tech name");
-
-  await db.insert(techStackItems).values({
-    orgId: currentOrgId(),
-    companyId,
-    name,
-    category: (str(formData.get("category")) as never) ?? "other",
-    confidence: (str(formData.get("confidence")) as never) ?? "likely",
-    vendor: str(formData.get("vendor")),
-    source: str(formData.get("source")),
-    notes: str(formData.get("notes")),
+  const input = TechItemCreateSchema.parse({
+    companyId: Number(formData.get("companyId")),
+    name: opt(formData.get("name")),
+    category: opt(formData.get("category")),
+    confidence: opt(formData.get("confidence")),
+    vendor: opt(formData.get("vendor")),
+    source: opt(formData.get("source")),
+    notes: opt(formData.get("notes")),
   });
-
-  revalidatePath(`/companies/${companyId}`);
+  await svcAddTechItem(input);
+  revalidatePath(`/companies/${input.companyId}`);
 }
 
 export async function deleteTechItem(formData: FormData) {
-  const db = await getDb();
   const id = Number(formData.get("id"));
   const companyId = Number(formData.get("companyId"));
-  await db
-    .delete(techStackItems)
-    .where(
-      and(
-        eq(techStackItems.id, id),
-        eq(techStackItems.orgId, currentOrgId()),
-      ),
-    );
+  await svcRemoveTechItem(id);
   revalidatePath(`/companies/${companyId}`);
 }
 
 export async function addContact(formData: FormData) {
-  const db = await getDb();
-  const companyId = Number(formData.get("companyId"));
-  const name = str(formData.get("name"));
-  if (!companyId || !name) throw new Error("Missing contact name");
-
-  await db.insert(contacts).values({
-    orgId: currentOrgId(),
-    companyId,
-    name,
-    title: str(formData.get("title")),
-    email: str(formData.get("email")),
-    phone: str(formData.get("phone")),
-    linkedin: str(formData.get("linkedin")),
+  const input = ContactCreateSchema.parse({
+    companyId: Number(formData.get("companyId")),
+    name: opt(formData.get("name")),
+    title: opt(formData.get("title")),
+    email: opt(formData.get("email")),
+    phone: opt(formData.get("phone")),
+    linkedin: opt(formData.get("linkedin")),
   });
-
-  revalidatePath(`/companies/${companyId}`);
+  await svcAddContact(input);
+  revalidatePath(`/companies/${input.companyId}`);
 }
 
 export async function addInteraction(formData: FormData) {
-  const db = await getDb();
-  const companyId = Number(formData.get("companyId"));
-  const body = str(formData.get("body"));
-  if (!companyId || !body) throw new Error("Missing interaction body");
-
-  await db.insert(interactions).values({
-    orgId: currentOrgId(),
-    companyId,
-    kind: (str(formData.get("kind")) as never) ?? "note",
-    body,
+  const input = InteractionCreateSchema.parse({
+    companyId: Number(formData.get("companyId")),
+    kind: opt(formData.get("kind")),
+    body: opt(formData.get("body")),
   });
-
-  revalidatePath(`/companies/${companyId}`);
+  await svcLogInteraction(input);
+  revalidatePath(`/companies/${input.companyId}`);
 }

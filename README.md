@@ -15,6 +15,10 @@ signal that tells a salesperson whether and how to engage.
   contacts, and an interaction log. Inline forms to add each.
 - **✨ Brief me** — an AI call-prep brief generated from *your own data* via the
   Claude API. No web scraping; it only summarizes what's in the record.
+- **🤖 Agent access (MCP)** — an MCP server so an AI agent (Claude Desktop,
+  Claude Code) can read and edit the CRM in plain language. The lowest-friction
+  way to use it: just *talk* to it instead of filling in forms. See
+  [`mcp/README.md`](mcp/README.md).
 
 ## Stack
 
