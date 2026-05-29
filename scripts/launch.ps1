@@ -74,8 +74,53 @@ Write-Host "  IMPORTANT: keep this window open while you use StackCRM." -Foregro
 Write-Host "  Closing it shuts the app down." -ForegroundColor Yellow
 Write-Host ""
 
-# 5. Run the app (this blocks and keeps the window alive).
-npm run dev
+# 5. Run the app so closing this window reliably stops it.
+#    We tie the server to a Windows "job object" set to kill-on-close: every
+#    process the server spawns is bound to this window, so closing it cleans
+#    everything up — no orphaned servers, no stuck port. If the job object
+#    can't be created (very old Windows), we fall back to a plain run.
+$jobKillCs = @"
+using System;
+using System.Runtime.InteropServices;
+public static class StackCrmJob {
+  [StructLayout(LayoutKind.Sequential)] struct BASIC { public long a; public long b; public uint LimitFlags; public UIntPtr c; public UIntPtr d; public uint e; public UIntPtr f; public uint g; public uint h; }
+  [StructLayout(LayoutKind.Sequential)] struct IOC { public ulong a,b,c,d,e,f; }
+  [StructLayout(LayoutKind.Sequential)] struct EXT { public BASIC Basic; public IOC Io; public UIntPtr a,b,c,d; }
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr a, string n);
+  [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr j, int c, IntPtr p, uint l);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr j, IntPtr p);
+  public static IntPtr Create() {
+    IntPtr job = CreateJobObject(IntPtr.Zero, null);
+    if (job == IntPtr.Zero) return IntPtr.Zero;
+    EXT ext = new EXT();
+    ext.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    int len = Marshal.SizeOf(typeof(EXT));
+    IntPtr p = Marshal.AllocHGlobal(len);
+    Marshal.StructureToPtr(ext, p, false);
+    bool ok = SetInformationJobObject(job, 9, p, (uint)len); // JobObjectExtendedLimitInformation
+    Marshal.FreeHGlobal(p);
+    return ok ? job : IntPtr.Zero;
+  }
+  public static bool Assign(IntPtr job, int pid) {
+    return AssignProcessToJobObject(job, System.Diagnostics.Process.GetProcessById(pid).Handle);
+  }
+}
+"@
 
-# If the server stops/errors, don't let the window vanish before they can read it.
-Pause-Exit $LASTEXITCODE
+$job = [IntPtr]::Zero
+try {
+  Add-Type -TypeDefinition $jobKillCs -ErrorAction Stop
+  $job = [StackCrmJob]::Create()
+} catch { $job = [IntPtr]::Zero }
+
+if ($job -ne [IntPtr]::Zero) {
+  # cmd.exe is bound to the job first, so the node processes it spawns inherit
+  # the kill-on-close binding.
+  $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm run dev" -NoNewWindow -PassThru
+  try { [void][StackCrmJob]::Assign($job, $proc.Id) } catch { }
+  Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
+  Pause-Exit $proc.ExitCode
+} else {
+  npm run dev
+  Pause-Exit $LASTEXITCODE
+}

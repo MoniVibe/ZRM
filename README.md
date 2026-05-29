@@ -32,7 +32,10 @@ signal that tells a salesperson whether and how to engage.
 
 The first launch installs what it needs (takes a few minutes, only once). If
 Node.js isn't installed, the launcher opens the download page and tells you what
-to click. Keep the black window open while using the app; close it to stop.
+to click.
+
+**To stop the app:** just close the black window — that fully shuts it down.
+Or double-click **`Stop StackCRM.cmd`** if you ever left it running.
 
 > Data is stored locally on your machine — no accounts or internet required.
 
