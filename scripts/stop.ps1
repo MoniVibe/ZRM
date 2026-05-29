@@ -1,4 +1,4 @@
-# Stops StackCRM — force-closes whatever is running the app on port 3000.
+# Stops StackCRM - force-closes whatever is running the app on port 3000.
 # Invoked by "Stop StackCRM.cmd". Useful if a window was left open, or as a
 # guaranteed off-switch.
 

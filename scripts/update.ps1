@@ -1,8 +1,8 @@
-# StackCRM updater — pulls the latest version from GitHub.
+# StackCRM updater - pulls the latest version from GitHub.
 # Invoked by "Update StackCRM.cmd". Safe for non-technical users.
 #
 # Note: the local database (./.pglite) and your settings (.env.local) are NOT
-# touched by updates — they're ignored by git. Any new database changes are
+# touched by updates - they're ignored by git. Any new database changes are
 # applied automatically the next time you launch the app.
 
 $repo = Split-Path $PSScriptRoot -Parent
@@ -24,7 +24,7 @@ Write-Host ""
 # 1. Is git installed?
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   Write-Host "  Git isn't installed, so I can't fetch updates." -ForegroundColor Yellow
-  Write-Host "  I'll open the download page — install it (click Next/Next/Finish)," -ForegroundColor Yellow
+  Write-Host "  I'll open the download page - install it (click Next/Next/Finish)," -ForegroundColor Yellow
   Write-Host "  then run this updater again." -ForegroundColor Yellow
   Start-Sleep -Seconds 2
   Start-Process "https://git-scm.com/download/win"
@@ -40,7 +40,7 @@ if (-not (Test-Path (Join-Path $repo ".git"))) {
   Pause-Exit 1
 }
 
-# 3. Pull the latest. Fast-forward only — never creates messy merges.
+# 3. Pull the latest. Fast-forward only - never creates messy merges.
 Write-Host "  Checking for updates..." -ForegroundColor Green
 git pull --ff-only
 if ($LASTEXITCODE -ne 0) {

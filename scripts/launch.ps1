@@ -1,4 +1,4 @@
-# StackCRM launcher — the friendly, no-typing-required way to start the app.
+# StackCRM launcher - the friendly, no-typing-required way to start the app.
 # Invoked by "Launch StackCRM.cmd". Handles first-run setup automatically.
 
 $ErrorActionPreference = "Stop"
@@ -32,7 +32,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 
 # 2. First-run setup: install dependencies if missing.
 if (-not (Test-Path (Join-Path $repo "node_modules"))) {
-  Write-Host "  First-time setup — installing components." -ForegroundColor Green
+  Write-Host "  First-time setup - installing components." -ForegroundColor Green
   Write-Host "  This happens only once and can take a few minutes..." -ForegroundColor Green
   Write-Host ""
   npm install
@@ -77,7 +77,7 @@ Write-Host ""
 # 5. Run the app so closing this window reliably stops it.
 #    We tie the server to a Windows "job object" set to kill-on-close: every
 #    process the server spawns is bound to this window, so closing it cleans
-#    everything up — no orphaned servers, no stuck port. If the job object
+#    everything up - no orphaned servers, no stuck port. If the job object
 #    can't be created (very old Windows), we fall back to a plain run.
 $jobKillCs = @"
 using System;
