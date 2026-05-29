@@ -67,7 +67,70 @@ function fail(e: unknown) {
   };
 }
 
-const server = new McpServer({ name: "stackcrm-mcp-server", version: "1.0.0" });
+// Sent to the agent on connect (the MCP `instructions` field). Keep it concise
+// — it lives in the agent's context. Depth lives in the `stackcrm://guide`
+// resource below.
+const INSTRUCTIONS = `StackCRM is a CRM for someone who sells technical products INTO companies. The central record is a COMPANY, and its TECH STACK is the headline data: which tools/platforms a company uses, each with a confidence (confirmed | likely | rumored) and a source (where it was learned, e.g. "job posting", "discovery call").
+
+Maintain the CRM from natural-language requests. Core workflow:
+- FIND before you write: call stackcrm_search_companies (by name/industry/domain, or filter by a tech name), then stackcrm_get_company with the returned id for the full record (tech stack, contacts, interactions). Search before creating to avoid duplicates.
+- RECORD TECH with stackcrm_add_tech whenever a company's technology comes up: include the company id and tech name; set category, confidence, and a short source when known. This is the most valuable data in the system.
+- LOG TOUCHES with stackcrm_log_interaction (call/email/meeting/note) so history stays current.
+- Only 'name' is required to create a company; fill other fields as you learn them.
+
+Conventions:
+- ids are integers returned by search/create — never invent them, look them up first.
+- Destructive tools (stackcrm_delete_company, stackcrm_remove_tech) cannot be undone — confirm with the user before using them.
+- The StackCRM app must be running. If a tool reports it can't reach the app, ask the user to launch it (the "Launch StackCRM" shortcut), then retry.
+
+Read the resource stackcrm://guide for the full field/enum reference and more workflows. The stackcrm_intake and stackcrm_prep prompts cover the two most common tasks.`;
+
+// Fuller reference, fetched on demand via the guide resource.
+const GUIDE = `# StackCRM — agent usage guide
+
+A company-centric CRM for technical sales. The COMPANY is the central record;
+its TECH STACK is the headline data used to qualify and engage.
+
+## Data model
+
+**Company** — id (int), name (required), domain, website, industry, size, hqLocation, description, tags (string[]).
+**TechStackItem** — id, companyId, name (e.g. "Datadog"), category, confidence, vendor, source, notes.
+**Contact** — id, companyId, name (required), title, email, phone, linkedin.
+**Interaction** — id, companyId, kind, body, occurredAt.
+
+## Enums
+
+- **category**: cloud, language, framework, database, datastore, devops, observability, security, analytics, collaboration, crm, other
+- **confidence**: confirmed, likely, rumored
+- **size** (headcount bucket): 1-10, 11-50, 51-200, 201-500, 501-1000, 1000+
+- **interaction kind**: note, call, email, meeting
+
+## Tools
+
+Reads: stackcrm_search_companies, stackcrm_get_company, stackcrm_list_tech.
+Writes: stackcrm_create_company, stackcrm_update_company, stackcrm_delete_company, stackcrm_add_tech, stackcrm_remove_tech, stackcrm_add_contact, stackcrm_log_interaction.
+
+## Workflows
+
+**Record from notes** — Given freeform notes: search for the company (create if new), add each technology with confidence + source, add contacts, log an interaction. Don't invent facts.
+
+**Update a company** — Search to get the id, then stackcrm_update_company with only the fields that changed.
+
+**Find by technology** — stackcrm_search_companies with \`tech\` set (e.g. "Datadog") returns companies using a matching tech. Use stackcrm_list_tech to see what's recorded.
+
+**Call prep** — Get the full company record and summarize: snapshot, tech-stack signals and implications, gaps to confirm, 2-3 talking points. Use only CRM data.
+
+## Rules
+
+- Look up ids; never fabricate them.
+- Set confidence honestly: "confirmed" only with a solid source; "rumored" for hearsay.
+- Confirm before any destructive operation.
+- The StackCRM app must be running for any tool to work.`;
+
+const server = new McpServer(
+  { name: "stackcrm-mcp-server", version: "1.0.0" },
+  { instructions: INSTRUCTIONS },
+);
 
 // ── Enum shapes (mirror the CRM schema) ───────────────────────────────────────
 const category = z
@@ -270,6 +333,78 @@ server.registerTool(
   async (args) => {
     try { return ok(await call("logInteraction", args)); } catch (e) { return fail(e); }
   },
+);
+
+// ── Usage guide as a readable resource ───────────────────────────────────────
+server.registerResource(
+  "guide",
+  "stackcrm://guide",
+  {
+    title: "StackCRM usage guide",
+    description:
+      "How to interface with StackCRM: data model, fields, enums, and workflows. Read this for the full reference.",
+    mimeType: "text/markdown",
+  },
+  async (uri) => ({
+    contents: [{ uri: uri.href, mimeType: "text/markdown", text: GUIDE }],
+  }),
+);
+
+// ── Workflow prompts for the two most common tasks ────────────────────────────
+server.registerPrompt(
+  "stackcrm_intake",
+  {
+    title: "Record from notes",
+    description:
+      "Turn freeform notes about a company into CRM records (company, tech stack, contacts, interaction).",
+    argsSchema: {
+      notes: z.string().describe("Freeform notes about a company or a sales touch"),
+    },
+  },
+  ({ notes }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `You are maintaining StackCRM (a tech-stack-first sales CRM) via its MCP tools. From the notes below:
+1. Identify the company. Call stackcrm_search_companies first; reuse its id if it exists, otherwise stackcrm_create_company (only 'name' is required).
+2. Record each technology with stackcrm_add_tech (company id + name; set category, confidence confirmed/likely/rumored, and a short source when stated).
+3. Add any people with stackcrm_add_contact.
+4. Log what happened with stackcrm_log_interaction (kind call/email/meeting/note + a concise body).
+Then confirm what you recorded. Do not invent facts that aren't in the notes.
+
+Notes:
+${notes}`,
+        },
+      },
+    ],
+  }),
+);
+
+server.registerPrompt(
+  "stackcrm_prep",
+  {
+    title: "Prep a call",
+    description: "Produce a sales call-prep brief for a company from the CRM.",
+    argsSchema: {
+      company: z.string().describe("Company name or id to prepare for"),
+    },
+  },
+  ({ company }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `Prepare a sales call-prep brief for "${company}" using StackCRM.
+1. Find it with stackcrm_search_companies and read the full record with stackcrm_get_company.
+2. Write the brief: (a) one-line snapshot, (b) notable tech-stack signals and what they imply, (c) gaps/unknowns worth confirming, (d) 2-3 suggested talking points.
+Use only data in the CRM; flag anything missing rather than guessing.`,
+        },
+      },
+    ],
+  }),
 );
 
 async function main() {

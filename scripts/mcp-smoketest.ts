@@ -27,6 +27,29 @@ await client.connect(transport);
 const tools = await client.listTools();
 console.log(`TOOLS (${tools.tools.length}):`, tools.tools.map((t) => t.name).join(", "));
 
+const instructions = client.getInstructions();
+console.log(`\nINSTRUCTIONS: ${instructions ? instructions.length + " chars" : "MISSING"}`);
+
+const resources = await client.listResources();
+console.log("RESOURCES:", resources.resources.map((r) => r.uri).join(", "));
+const guide = await client.readResource({ uri: "stackcrm://guide" });
+const guideText = (guide.contents?.[0] as { text?: string })?.text ?? "";
+console.log(`guide resource: ${guideText.length} chars`);
+
+const prompts = await client.listPrompts();
+console.log("PROMPTS:", prompts.prompts.map((p) => p.name).join(", "));
+const prep = await client.getPrompt({ name: "stackcrm_prep", arguments: { company: "Acme Analytics" } });
+const prepText = (prep.messages?.[0]?.content as { text?: string })?.text ?? "";
+console.log(`prep prompt renders: ${prepText.includes("Acme Analytics") ? "ok (interpolated)" : "FAIL"}`);
+
+const docsOk =
+  !!instructions &&
+  instructions.includes("TECH STACK") &&
+  resources.resources.some((r) => r.uri === "stackcrm://guide") &&
+  guideText.includes("Enums") &&
+  prompts.prompts.length === 2 &&
+  prepText.includes("Acme Analytics");
+
 const call = (name: string, args: Record<string, unknown> = {}) =>
   client.callTool({ name, arguments: args }) as Promise<{
     content?: Array<{ type: string; text?: string }>;
@@ -74,7 +97,11 @@ console.log(textOf(await call("stackcrm_get_company", { id: newId })));
 // Assertions
 const techOk = full.techStack.length === 1 && full.interactions.length === 1;
 const searchOk = k.some((c: { name: string }) => c.name === "Initech");
-console.log("\nRESULT:", techOk && searchOk ? "PASS" : "FAIL", `(techOk=${techOk} searchOk=${searchOk})`);
+console.log(
+  "\nRESULT:",
+  techOk && searchOk && docsOk ? "PASS" : "FAIL",
+  `(techOk=${techOk} searchOk=${searchOk} docsOk=${docsOk})`,
+);
 
 await client.close();
 process.exit(0);

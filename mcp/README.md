@@ -35,6 +35,18 @@ clear "is the app running?" error.
 | `stackcrm_add_contact` | Add a person at a company |
 | `stackcrm_log_interaction` | Log a call/email/meeting/note |
 
+## Self-documenting for agents
+
+The server tells agents how to use it, so you don't have to prime them:
+
+- **Instructions** — sent automatically on connect (the MCP `instructions`
+  field). Covers the data model, the find-before-write workflow, and conventions.
+- **Guide resource** (`stackcrm://guide`) — a fuller reference (fields, enums,
+  workflows) the agent can read on demand.
+- **Prompts** — `stackcrm_intake` (turn freeform notes into records) and
+  `stackcrm_prep` (produce a call-prep brief). These show up as slash-style
+  commands in clients that support prompts.
+
 ## Connect it to Claude Desktop
 
 1. Open Claude Desktop's config file (Settings → Developer → Edit Config), at
